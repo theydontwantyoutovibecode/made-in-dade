@@ -9,8 +9,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/theydontwantyoutovibecode/dade/internal/config"
-	execx "github.com/theydontwantyoutovibecode/dade/internal/exec"
+	"github.com/theydontwantyoutovibecode/made-in-dade/internal/config"
+	execx "github.com/theydontwantyoutovibecode/made-in-dade/internal/exec"
 )
 
 func CreatePlist(ctx context.Context, runner execx.Runner, plistPath, caddyfilePath, logPath, errPath string) error {

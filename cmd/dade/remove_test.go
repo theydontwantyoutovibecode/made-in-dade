@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/theydontwantyoutovibecode/dade/internal/registry"
+	"github.com/theydontwantyoutovibecode/made-in-dade/internal/registry"
 )
 
 func resetRemoveFlags(t *testing.T) {

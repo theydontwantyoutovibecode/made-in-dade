@@ -7,9 +7,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/theydontwantyoutovibecode/dade/internal/config"
-	execx "github.com/theydontwantyoutovibecode/dade/internal/exec"
-	"github.com/theydontwantyoutovibecode/dade/internal/logging"
+	"github.com/theydontwantyoutovibecode/made-in-dade/internal/config"
+	execx "github.com/theydontwantyoutovibecode/made-in-dade/internal/exec"
+	"github.com/theydontwantyoutovibecode/made-in-dade/internal/logging"
 )
 
 type defaultTemplatesCommand struct {

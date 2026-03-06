@@ -1,4 +1,4 @@
-module github.com/theydontwantyoutovibecode/dade
+module github.com/theydontwantyoutovibecode/made-in-dade
 
 go 1.24.2
 

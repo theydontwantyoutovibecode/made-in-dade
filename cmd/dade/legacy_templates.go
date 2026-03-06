@@ -1,9 +1,9 @@
 package main
 
 import (
-	"github.com/theydontwantyoutovibecode/dade/internal/config"
-	"github.com/theydontwantyoutovibecode/dade/internal/logging"
-	"github.com/theydontwantyoutovibecode/dade/internal/ui"
+	"github.com/theydontwantyoutovibecode/made-in-dade/internal/config"
+	"github.com/theydontwantyoutovibecode/made-in-dade/internal/logging"
+	"github.com/theydontwantyoutovibecode/made-in-dade/internal/ui"
 )
 
 func runTemplates(args []string, console *ui.UI, logger *logging.Logger, styled bool) int {

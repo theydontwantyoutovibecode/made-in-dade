@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/theydontwantyoutovibecode/dade/internal/config"
+	"github.com/theydontwantyoutovibecode/made-in-dade/internal/config"
 )
 
 func TestBuildPlistIncludesPaths(t *testing.T) {

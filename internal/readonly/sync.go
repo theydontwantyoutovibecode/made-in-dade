@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	execx "github.com/theydontwantyoutovibecode/dade/internal/exec"
-	"github.com/theydontwantyoutovibecode/dade/internal/logging"
+	execx "github.com/theydontwantyoutovibecode/made-in-dade/internal/exec"
+	"github.com/theydontwantyoutovibecode/made-in-dade/internal/logging"
 )
 
 func SyncDeps(ctx context.Context, runner execx.Runner, projectDir string, logger *logging.Logger) error {

@@ -11,13 +11,13 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/theydontwantyoutovibecode/dade/internal/config"
-	"github.com/theydontwantyoutovibecode/dade/internal/lifecycle"
-	"github.com/theydontwantyoutovibecode/dade/internal/logging"
-	"github.com/theydontwantyoutovibecode/dade/internal/manifest"
-	"github.com/theydontwantyoutovibecode/dade/internal/registry"
-	"github.com/theydontwantyoutovibecode/dade/internal/tunnel"
-	"github.com/theydontwantyoutovibecode/dade/internal/ui"
+	"github.com/theydontwantyoutovibecode/made-in-dade/internal/config"
+	"github.com/theydontwantyoutovibecode/made-in-dade/internal/lifecycle"
+	"github.com/theydontwantyoutovibecode/made-in-dade/internal/logging"
+	"github.com/theydontwantyoutovibecode/made-in-dade/internal/manifest"
+	"github.com/theydontwantyoutovibecode/made-in-dade/internal/registry"
+	"github.com/theydontwantyoutovibecode/made-in-dade/internal/tunnel"
+	"github.com/theydontwantyoutovibecode/made-in-dade/internal/ui"
 	"github.com/spf13/cobra"
 )
 

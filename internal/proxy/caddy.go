@@ -8,9 +8,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/theydontwantyoutovibecode/dade/internal/config"
-	execx "github.com/theydontwantyoutovibecode/dade/internal/exec"
-	"github.com/theydontwantyoutovibecode/dade/internal/registry"
+	"github.com/theydontwantyoutovibecode/made-in-dade/internal/config"
+	execx "github.com/theydontwantyoutovibecode/made-in-dade/internal/exec"
+	"github.com/theydontwantyoutovibecode/made-in-dade/internal/registry"
 )
 
 func GenerateCaddyfile(ctx context.Context, runner execx.Runner, projectsPath, caddyfilePath string) error {

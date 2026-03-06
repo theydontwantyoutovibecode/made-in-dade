@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/theydontwantyoutovibecode/dade/internal/registry"
-	"github.com/theydontwantyoutovibecode/dade/internal/serve"
+	"github.com/theydontwantyoutovibecode/made-in-dade/internal/registry"
+	"github.com/theydontwantyoutovibecode/made-in-dade/internal/serve"
 )
 
 func TestStopCmdNotJustvibin(t *testing.T) {

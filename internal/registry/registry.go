@@ -10,7 +10,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/theydontwantyoutovibecode/dade/internal/config"
+	"github.com/theydontwantyoutovibecode/made-in-dade/internal/config"
 )
 
 type Project struct {

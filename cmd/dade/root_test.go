@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/theydontwantyoutovibecode/dade/internal/version"
+	"github.com/theydontwantyoutovibecode/made-in-dade/internal/version"
 )
 
 func TestRootCommandHelp(t *testing.T) {

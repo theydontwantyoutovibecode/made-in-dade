@@ -9,7 +9,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/theydontwantyoutovibecode/dade/internal/manifest"
+	"github.com/theydontwantyoutovibecode/made-in-dade/internal/manifest"
 	"github.com/charmbracelet/lipgloss"
 )
 

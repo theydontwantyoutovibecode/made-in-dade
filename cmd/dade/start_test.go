@@ -7,11 +7,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/theydontwantyoutovibecode/dade/internal/config"
-	"github.com/theydontwantyoutovibecode/dade/internal/logging"
-	"github.com/theydontwantyoutovibecode/dade/internal/registry"
-	"github.com/theydontwantyoutovibecode/dade/internal/serve"
-	"github.com/theydontwantyoutovibecode/dade/internal/ui"
+	"github.com/theydontwantyoutovibecode/made-in-dade/internal/config"
+	"github.com/theydontwantyoutovibecode/made-in-dade/internal/logging"
+	"github.com/theydontwantyoutovibecode/made-in-dade/internal/registry"
+	"github.com/theydontwantyoutovibecode/made-in-dade/internal/serve"
+	"github.com/theydontwantyoutovibecode/made-in-dade/internal/ui"
 )
 
 func TestStartCmdNotJustvibin(t *testing.T) {

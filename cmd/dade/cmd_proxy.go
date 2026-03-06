@@ -7,8 +7,8 @@ import (
 	"os"
 	"os/exec"
 
-	"github.com/theydontwantyoutovibecode/dade/internal/logging"
-	"github.com/theydontwantyoutovibecode/dade/internal/ui"
+	"github.com/theydontwantyoutovibecode/made-in-dade/internal/logging"
+	"github.com/theydontwantyoutovibecode/made-in-dade/internal/ui"
 	"github.com/spf13/cobra"
 )
 

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/theydontwantyoutovibecode/dade/internal/logging"
+	"github.com/theydontwantyoutovibecode/made-in-dade/internal/logging"
 )
 
 func TestEnsureDefaultTemplatesCreatesMarker(t *testing.T) {

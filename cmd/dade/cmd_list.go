@@ -7,10 +7,10 @@ import (
 	"net"
 	"strings"
 
-	"github.com/theydontwantyoutovibecode/dade/internal/config"
-	"github.com/theydontwantyoutovibecode/dade/internal/logging"
-	"github.com/theydontwantyoutovibecode/dade/internal/registry"
-	"github.com/theydontwantyoutovibecode/dade/internal/ui"
+	"github.com/theydontwantyoutovibecode/made-in-dade/internal/config"
+	"github.com/theydontwantyoutovibecode/made-in-dade/internal/logging"
+	"github.com/theydontwantyoutovibecode/made-in-dade/internal/registry"
+	"github.com/theydontwantyoutovibecode/made-in-dade/internal/ui"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/spf13/cobra"
 )

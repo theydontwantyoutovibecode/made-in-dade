@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/theydontwantyoutovibecode/dade/internal/manifest"
+	"github.com/theydontwantyoutovibecode/made-in-dade/internal/manifest"
 )
 
 func TestChooseTemplateNonInteractive(t *testing.T) {

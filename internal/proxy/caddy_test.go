@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/theydontwantyoutovibecode/dade/internal/config"
-	"github.com/theydontwantyoutovibecode/dade/internal/registry"
+	"github.com/theydontwantyoutovibecode/made-in-dade/internal/config"
+	"github.com/theydontwantyoutovibecode/made-in-dade/internal/registry"
 )
 
 type runCall struct {

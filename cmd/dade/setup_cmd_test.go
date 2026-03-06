@@ -5,9 +5,9 @@ import (
 	"strings"
 	"testing"
 
-	execx "github.com/theydontwantyoutovibecode/dade/internal/exec"
-	"github.com/theydontwantyoutovibecode/dade/internal/logging"
-	"github.com/theydontwantyoutovibecode/dade/internal/ui"
+	execx "github.com/theydontwantyoutovibecode/made-in-dade/internal/exec"
+	"github.com/theydontwantyoutovibecode/made-in-dade/internal/logging"
+	"github.com/theydontwantyoutovibecode/made-in-dade/internal/ui"
 )
 
 func TestSetupCmdYesSkipsPrompts(t *testing.T) {

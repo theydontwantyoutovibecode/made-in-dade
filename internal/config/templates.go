@@ -20,13 +20,13 @@ type Templates struct {
 func DefaultTemplates() Templates {
 	ordered := []Template{
 		{
-			Name:        "web-app",
-			URL:         "https://github.com/theydontwantyoutovibecode/web-app-made-in-dade.git",
+			Name:        "webapp",
+			URL:         "https://github.com/theydontwantyoutovibecode/webapp-made-in-dade.git",
 			DisplayName: "Django + Hypermedia (HTMX, TailwindCSS)",
 		},
 		{
-			Name:        "web-site",
-			URL:         "https://github.com/theydontwantyoutovibecode/web-site-made-in-dade.git",
+			Name:        "website",
+			URL:         "https://github.com/theydontwantyoutovibecode/website-made-in-dade.git",
 			DisplayName: "HTML + Hypertext (Vanilla HTML/CSS/JS with HTMX)",
 		},
 		{
