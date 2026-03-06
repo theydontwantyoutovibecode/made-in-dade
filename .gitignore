@@ -9,7 +9,7 @@
 .vscode/
 
 # Config (user-specific)
-.justvibin-dev
+.dade-dev
 
 # Vendored upstream read-only deps
 .read-only/
