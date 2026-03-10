@@ -353,8 +353,8 @@ func (c devCommand) run(ctx context.Context, args []string, console *ui.UI, logg
 		if mf.Serve.Static.Root != "" {
 			staticRoot = filepath.Join(projectDir, mf.Serve.Static.Root)
 		}
-		// Build caddy command for static serving
-		serveCmd := fmt.Sprintf("caddy file-server --listen :%[1]d --root %[2]s", port, staticRoot)
+		// Build caddy command for static serving (suppress logs for cleaner output)
+		serveCmd := fmt.Sprintf("caddy file-server --listen :%[1]d --root %[2]s 2>/dev/null", port, staticRoot)
 		if err := ctrl.StartServer(ctx, serveCmd, port, portEnv); err != nil {
 			// Check if it was a signal-based shutdown
 			if ctx.Err() != nil {
