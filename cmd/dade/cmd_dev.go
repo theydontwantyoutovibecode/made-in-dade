@@ -20,7 +20,6 @@ import (
 	"github.com/theydontwantyoutovibecode/made-in-dade/internal/proxy"
 	"github.com/theydontwantyoutovibecode/made-in-dade/internal/readonly"
 	"github.com/theydontwantyoutovibecode/made-in-dade/internal/registry"
-	"github.com/theydontwantyoutovibecode/made-in-dade/internal/serve"
 	"github.com/theydontwantyoutovibecode/made-in-dade/internal/ui"
 	"github.com/spf13/cobra"
 )
@@ -354,12 +353,16 @@ func (c devCommand) run(ctx context.Context, args []string, console *ui.UI, logg
 		if mf.Serve.Static.Root != "" {
 			staticRoot = filepath.Join(projectDir, mf.Serve.Static.Root)
 		}
-		_, err := serve.StartStaticServer(ctx, nil, port, staticRoot)
-		if err != nil {
-			logger.Error(fmt.Sprintf("Failed to start static server: %v", err))
+		// Build caddy command for static serving
+		serveCmd := fmt.Sprintf("caddy file-server --listen :%[1]d --root %[2]s", port, staticRoot)
+		if err := ctrl.StartServer(ctx, serveCmd, port, portEnv); err != nil {
+			// Check if it was a signal-based shutdown
+			if ctx.Err() != nil {
+				return 0
+			}
+			logger.Error(fmt.Sprintf("Server exited: %v", err))
 			return 1
 		}
-		return 0
 	case "command":
 		if err := ctrl.StartServer(ctx, serveCmd, port, portEnv); err != nil {
 			// Check if it was a signal-based shutdown
