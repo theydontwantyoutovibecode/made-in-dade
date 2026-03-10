@@ -131,7 +131,14 @@ A static website using plain HTML, CSS, and JavaScript with HTMX for dynamic int
 
 ##### What `dade dev` does
 
-Starts dade's built-in static file server, which serves files from the project root directory. There are no setup commands or dependencies to install.
+Starts a Caddy static file server on the project's assigned port, serving files from the project root directory. The server runs in the foreground and supports:
+
+- Automatic HTTPS via the dade proxy (available at `https://<name>.localhost`)
+- Live reloading of static files
+- Proper MIME type handling
+- Directory listing for missing index files
+
+There are no setup commands or dependencies to install beyond what dade provides.
 
 ##### HTMX partials
 
