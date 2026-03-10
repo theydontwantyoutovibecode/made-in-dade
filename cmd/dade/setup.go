@@ -272,6 +272,9 @@ func (c setupCommand) checkAllDependencies(ctx context.Context, logger *logging.
 	if !c.checkDependency(ctx, logger, "caddy", "caddy", true) {
 		allOK = false
 	}
+	if !c.checkDependency(ctx, logger, "tailwindcss", "tailwindcss", true) {
+		allOK = false
+	}
 	c.checkDependency(ctx, logger, "cloudflared", "cloudflared", false)
 	c.checkDependency(ctx, logger, "tk", "wedow/tap/ticket", false)
 	return allOK

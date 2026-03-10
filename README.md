@@ -9,7 +9,7 @@ brew tap theydontwantyoutovibecode/tap
 brew install dade
 ```
 
-Homebrew installs dade and its required dependencies (Caddy, jq, git). The first time you run any command, dade automatically configures itself: it creates `~/.config/dade/`, generates a Caddyfile, starts the HTTPS proxy, and installs the default templates.
+Homebrew installs dade and its required dependencies (Caddy, jq, tailwindcss, git). The first time you run any command, dade automatically configures itself: it creates `~/.config/dade/`, generates a Caddyfile, starts the HTTPS proxy, and installs the default templates.
 
 To build from source instead:
 
