@@ -50,6 +50,7 @@ func init() {
 	devCmd.Flags().Bool("skip-setup", false, "Skip setup commands")
 	devCmd.Flags().Bool("open", false, "Open project in browser after starting")
 	devCmd.Flags().IntP("port", "p", 0, "Override port")
+	devCmd.Flags().Bool("non-interactive", false, "Run server in background (no blocking)")
 }
 
 type devCommand struct {
@@ -84,16 +85,17 @@ func runDevCmd(cmd *cobra.Command, args []string) error {
 	skipSetup, _ := cmd.Flags().GetBool("skip-setup")
 	openFlag, _ := cmd.Flags().GetBool("open")
 	portOverride, _ := cmd.Flags().GetInt("port")
+	nonInteractive, _ := cmd.Flags().GetBool("non-interactive")
 
 	impl := devCommandFactory()
-	code := impl.run(context.Background(), args, console, logger, skipSetup, openFlag, portOverride)
+	code := impl.run(context.Background(), args, console, logger, skipSetup, openFlag, portOverride, nonInteractive)
 	if code != 0 {
 		return errors.New("dev command failed")
 	}
 	return nil
 }
 
-func (c devCommand) run(ctx context.Context, args []string, console *ui.UI, logger *logging.Logger, skipSetup bool, openBrowser bool, portOverride int) int {
+func (c devCommand) run(ctx context.Context, args []string, console *ui.UI, logger *logging.Logger, skipSetup bool, openBrowser bool, portOverride int, nonInteractive bool) int {
 	var projectDir string
 	var projectName string
 
@@ -346,35 +348,98 @@ func (c devCommand) run(ctx context.Context, args []string, console *ui.UI, logg
 	}
 	fmt.Println()
 
-	// Start main server (blocking)
-	switch serveType {
-	case "static":
-		staticRoot := projectDir
-		if mf.Serve.Static.Root != "" {
-			staticRoot = filepath.Join(projectDir, mf.Serve.Static.Root)
-		}
-		// Build caddy command for static serving (suppress logs for cleaner output)
-		serveCmd := fmt.Sprintf("caddy file-server --listen :%[1]d --root %[2]s 2>/dev/null", port, staticRoot)
-		if err := ctrl.StartServer(ctx, serveCmd, port, portEnv); err != nil {
-			// Check if it was a signal-based shutdown
-			if ctx.Err() != nil {
-				return 0
+	// Start main server (blocking unless non-interactive)
+	if nonInteractive {
+		// Run server in background
+		switch serveType {
+		case "static":
+			staticRoot := projectDir
+			if mf.Serve.Static.Root != "" {
+				staticRoot = filepath.Join(projectDir, mf.Serve.Static.Root)
 			}
-			logger.Error(fmt.Sprintf("Server exited: %v", err))
-			return 1
-		}
-	case "command":
-		if err := ctrl.StartServer(ctx, serveCmd, port, portEnv); err != nil {
-			// Check if it was a signal-based shutdown
-			if ctx.Err() != nil {
-				return 0
+			// Create a temporary Caddyfile for static serving with clean URLs
+			caddyfilePath := filepath.Join(projectDir, ".dade.caddyfile")
+			caddyfileContent := fmt.Sprintf(`:%[1]d {
+	root %[2]s
+	try_files {path}.html {path}
+	file_server
+}
+`, port, staticRoot)
+			if err := os.WriteFile(caddyfilePath, []byte(caddyfileContent), 0644); err != nil {
+				logger.Error(fmt.Sprintf("Failed to create Caddyfile: %v", err))
+				return 1
 			}
-			logger.Error(fmt.Sprintf("Server exited: %v", err))
-			return 1
+			// Register cleanup to remove the temporary Caddyfile
+			cleanupCaddyfile := func() {
+				_ = os.Remove(caddyfilePath)
+			}
+			ctrl.RegisterCleanup(cleanupCaddyfile)
+			// Build caddy command using the Caddyfile (suppress logs for cleaner output)
+			serveCmd := fmt.Sprintf("caddy run --config %s 2>/dev/null", caddyfilePath)
+			if _, err := ctrl.StartServerBackground(ctx, serveCmd, port, portEnv); err != nil {
+				logger.Error(fmt.Sprintf("Failed to start server: %v", err))
+				return 1
+			}
+			logger.Success(fmt.Sprintf("Started %s in background mode", projectName))
+			if needsProxy {
+				projectURL := fmt.Sprintf("https://%s", config.ProjectDomain(projectName))
+				logger.Info(fmt.Sprintf("URL: %s", projectURL))
+			}
+		case "command":
+			if _, err := ctrl.StartServerBackground(ctx, serveCmd, port, portEnv); err != nil {
+				logger.Error(fmt.Sprintf("Failed to start server: %v", err))
+				return 1
+			}
+			logger.Success(fmt.Sprintf("Started %s in background mode", projectName))
 		}
+		return 0
+	} else {
+		// Run server in foreground (blocking)
+		switch serveType {
+		case "static":
+			staticRoot := projectDir
+			if mf.Serve.Static.Root != "" {
+				staticRoot = filepath.Join(projectDir, mf.Serve.Static.Root)
+			}
+			// Create a temporary Caddyfile for static serving with clean URLs
+			caddyfilePath := filepath.Join(projectDir, ".dade.caddyfile")
+			caddyfileContent := fmt.Sprintf(`:%[1]d {
+	root %[2]s
+	try_files {path}.html {path}
+	file_server
+}
+`, port, staticRoot)
+			if err := os.WriteFile(caddyfilePath, []byte(caddyfileContent), 0644); err != nil {
+				logger.Error(fmt.Sprintf("Failed to create Caddyfile: %v", err))
+				return 1
+			}
+			// Register cleanup to remove the temporary Caddyfile
+			cleanupCaddyfile := func() {
+				_ = os.Remove(caddyfilePath)
+			}
+			ctrl.RegisterCleanup(cleanupCaddyfile)
+			// Build caddy command using the Caddyfile (suppress logs for cleaner output)
+			serveCmd := fmt.Sprintf("caddy run --config %s 2>/dev/null", caddyfilePath)
+			if err := ctrl.StartServer(ctx, serveCmd, port, portEnv); err != nil {
+				// Check if it was a signal-based shutdown
+				if ctx.Err() != nil {
+					return 0
+				}
+				logger.Error(fmt.Sprintf("Server exited: %v", err))
+				return 1
+			}
+		case "command":
+			if err := ctrl.StartServer(ctx, serveCmd, port, portEnv); err != nil {
+				// Check if it was a signal-based shutdown
+				if ctx.Err() != nil {
+					return 0
+				}
+				logger.Error(fmt.Sprintf("Server exited: %v", err))
+				return 1
+			}
+		}
+		return 0
 	}
-
-	return 0
 }
 
 func killProcessOnPort(port int) error {
