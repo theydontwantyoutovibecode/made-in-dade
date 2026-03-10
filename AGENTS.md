@@ -8,8 +8,14 @@ This document provides guidelines for AI agents working on the dade codebase.
 
 dade is a CLI tool written in Go that:
 1. Scaffolds web projects from git-based templates
-2. Manages a local HTTPS proxy (Caddy) for `*.<hostname>.local` routing (shareable across LAN)
+2. Manages a local HTTPS proxy (Caddy) for `*.<hostname>.localhost` routing (RFC 6761 compliant)
 3. Handles project lifecycle (start, stop, open, tunnel)
+
+**Domain TLD Configuration:**
+- Default: `.localhost` (auto-resolves to 127.0.0.1, no /etc/hosts needed)
+- Configurable via `~/.config/dade/config.toml` or `DADE_DOMAIN_TLD` env var
+- Legacy installations preserve `.local` for backward compatibility
+- See `internal/config/domain.go` for implementation
 
 ## Architecture
 
@@ -22,12 +28,15 @@ cmd/dade/           # CLI commands (Cobra)
 └── *_test.go            # Tests
 
 internal/
-├── config/              # Configuration paths and templates
-├── exec/                # Process execution helpers
+├── config/              # Configuration paths, domain TLD management
+├── exec/                # Process execution helpers, sudo wrapper
 ├── fsutil/              # Filesystem utilities
+├── hosts/               # /etc/hosts file management
+├── lifecycle/           # Process lifecycle (PID files, cleanup)
 ├── logging/             # Styled logging (Charm)
 ├── manifest/            # dade.toml parsing/validation
 ├── proxy/               # Caddy proxy + launchd integration
+├── readonly/            # Read-only dependency management
 ├── registry/            # Project registry (projects.json)
 ├── serve/               # Static file server + status
 ├── ui/                  # Charm UI components
@@ -40,13 +49,16 @@ internal/
 |------|---------|
 | `cmd/dade/root.go` | Root command, global flags |
 | `cmd/dade/cmd_new.go` | `dade new` command |
-| `cmd/dade/cmd_start.go` | `dade start` command |
+| `cmd/dade/cmd_dev.go` | `dade dev` command (main dev server) |
 | `cmd/dade/cmd_stop.go` | `dade stop` command |
+| `internal/config/domain.go` | Domain TLD configuration (environment, config file, legacy) |
+| `internal/config/paths.go` | Config directory paths, domain resolution |
 | `internal/manifest/manifest.go` | TOML parsing for dade.toml |
 | `internal/registry/registry.go` | Project registry management |
-| `internal/proxy/caddy.go` | Caddyfile generation |
-| `internal/proxy/launchd.go` | macOS launchd service |
-| `internal/config/paths.go` | Config directory paths |
+| `internal/proxy/caddy.go` | Caddyfile generation, hosts file integration |
+| `internal/hosts/hosts.go` | /etc/hosts file management |
+| `internal/lifecycle/controller.go` | Process lifecycle (PID files, orphaned process cleanup) |
+| `internal/exec/sudo.go` | Sudo wrapper for privileged operations |
 
 ## Adding Commands
 

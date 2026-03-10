@@ -21,15 +21,17 @@ func Hostname() string {
 }
 
 // LocalDomain returns the base domain for local network sharing.
-// Format: {hostname}.local (e.g., "macbook.local")
+// Uses configured domain TLD (default: .localhost, legacy: .local)
+// Format: {hostname}{tld} (e.g., "macbook.localhost")
 func LocalDomain() string {
-	return Hostname() + ".local"
+	return Hostname() + DomainTLD()
 }
 
-// ProjectDomain returns the full domain for a project.
-// Format: {project}.{hostname}.local (e.g., "myapp.macbook.local")
+// ProjectDomain returns full domain for a project.
+// Uses configured domain TLD (default: .localhost, legacy: .local)
+// Format: {project}.{hostname}{tld} (e.g., "myapp.macbook.localhost")
 func ProjectDomain(projectName string) string {
-	return projectName + "." + LocalDomain()
+	return projectName + "." + Hostname() + DomainTLD()
 }
 
 const (

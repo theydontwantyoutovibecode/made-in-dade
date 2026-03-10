@@ -5,8 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"syscall"
 
 	"github.com/theydontwantyoutovibecode/made-in-dade/internal/config"
@@ -17,6 +20,7 @@ import (
 	"github.com/theydontwantyoutovibecode/made-in-dade/internal/proxy"
 	"github.com/theydontwantyoutovibecode/made-in-dade/internal/readonly"
 	"github.com/theydontwantyoutovibecode/made-in-dade/internal/registry"
+	"github.com/theydontwantyoutovibecode/made-in-dade/internal/serve"
 	"github.com/theydontwantyoutovibecode/made-in-dade/internal/ui"
 	"github.com/spf13/cobra"
 )
@@ -160,23 +164,67 @@ func (c devCommand) run(ctx context.Context, args []string, console *ui.UI, logg
 
 	// Check if already running (only meaningful for projects with a port)
 	if port > 0 && c.isPortInUse(port) {
-		logger.Warn(fmt.Sprintf("Project already running on port %d", port))
-		if needsProxy {
-			logger.Info(fmt.Sprintf("URL: https://%s", config.ProjectDomain(projectName)))
+		pidFile := filepath.Join(projectDir, ".dade.pid")
+		pidData, err := os.ReadFile(pidFile)
+
+		if err == nil {
+			pidStr := strings.TrimSpace(string(pidData))
+			pid, _ := strconv.Atoi(pidStr)
+
+			if pid > 0 {
+				process, err := os.FindProcess(pid)
+				if err == nil {
+					if err := process.Signal(syscall.Signal(0)); err != nil {
+						// Process is not running, stale PID file
+						logger.Info("Removing stale PID file")
+						_ = os.Remove(pidFile)
+					} else {
+						// Process is running
+						logger.Warn(fmt.Sprintf("Project already running on port %d", port))
+						if needsProxy {
+							logger.Info(fmt.Sprintf("URL: https://%s", config.ProjectDomain(projectName)))
+						}
+						return 0
+					}
+				}
+			}
 		}
-		return 0
+
+		if os.IsNotExist(err) {
+			// No PID file but port is in use - orphaned process
+			logger.Warn(fmt.Sprintf("Found orphaned process on port %d", port))
+			if err := killProcessOnPort(port); err != nil {
+				logger.Warn(fmt.Sprintf("Failed to kill orphaned process: %v", err))
+				logger.Info(fmt.Sprintf("URL: https://%s", config.ProjectDomain(projectName)))
+				return 0
+			}
+			logger.Info("Cleaned up orphaned process")
+		}
 	}
 
-	// Determine serve command
+	// Determine serve type and command
+	serveType := manifest.ServeType(mf)
 	serveCmd := manifest.ServeCommand(mf, "dev")
-	if serveCmd == "" {
-		logger.Error("No serve command defined in manifest")
-		return 1
-	}
 
 	portEnv := mf.Serve.PortEnv
 	if portEnv == "" {
 		portEnv = "PORT"
+	}
+
+	switch serveType {
+	case "static":
+		// Handle static server separately - no command needed
+		if serveCmd != "" {
+			logger.Warn("serve.dev command ignored for static templates")
+		}
+	case "command":
+		if serveCmd == "" {
+			logger.Error("No serve.dev command defined in manifest")
+			return 1
+		}
+	default:
+		logger.Error(fmt.Sprintf("Unknown serve type: %s", serveType))
+		return 1
 	}
 
 	// Create lifecycle controller
@@ -269,6 +317,14 @@ func (c devCommand) run(ctx context.Context, args []string, console *ui.UI, logg
 		}
 	}
 
+	// Display domain TLD info
+	domainTLD := config.DomainTLD()
+	if domainTLD == ".local" {
+		logger.Info("Note: .local domains work on this machine only. For LAN access, update /etc/hosts manually")
+	} else if domainTLD != ".localhost" {
+		logger.Info(fmt.Sprintf("Using custom domain TLD: %s", domainTLD))
+	}
+
 	// Display ready message
 	if readyMsg := manifest.DevReadyMessage(mf); readyMsg != "" {
 		logger.Success(readyMsg)
@@ -292,14 +348,62 @@ func (c devCommand) run(ctx context.Context, args []string, console *ui.UI, logg
 	fmt.Println()
 
 	// Start main server (blocking)
-	if err := ctrl.StartServer(ctx, serveCmd, port, portEnv); err != nil {
-		// Check if it was a signal-based shutdown
-		if ctx.Err() != nil {
-			return 0
+	switch serveType {
+	case "static":
+		staticRoot := projectDir
+		if mf.Serve.Static.Root != "" {
+			staticRoot = filepath.Join(projectDir, mf.Serve.Static.Root)
 		}
-		logger.Error(fmt.Sprintf("Server exited: %v", err))
-		return 1
+		_, err := serve.StartStaticServer(ctx, nil, port, staticRoot)
+		if err != nil {
+			logger.Error(fmt.Sprintf("Failed to start static server: %v", err))
+			return 1
+		}
+		return 0
+	case "command":
+		if err := ctrl.StartServer(ctx, serveCmd, port, portEnv); err != nil {
+			// Check if it was a signal-based shutdown
+			if ctx.Err() != nil {
+				return 0
+			}
+			logger.Error(fmt.Sprintf("Server exited: %v", err))
+			return 1
+		}
 	}
 
 	return 0
+}
+
+func killProcessOnPort(port int) error {
+	// Use lsof on macOS and Linux
+	cmd := exec.Command("lsof", "-ti", fmt.Sprintf(":%d", port))
+	output, err := cmd.Output()
+	if err != nil {
+		return fmt.Errorf("failed to find process on port %d: %w", port, err)
+	}
+
+	pidStr := strings.TrimSpace(string(output))
+	if pidStr == "" {
+		return fmt.Errorf("no process found on port %d", port)
+	}
+
+	pid, err := strconv.Atoi(pidStr)
+	if err != nil {
+		return fmt.Errorf("invalid PID: %w", err)
+	}
+
+	process, err := os.FindProcess(pid)
+	if err != nil {
+		return fmt.Errorf("failed to find process %d: %w", pid, err)
+	}
+
+	// Try SIGTERM first
+	if err := process.Signal(syscall.SIGTERM); err != nil {
+		// Fall back to SIGKILL
+		if err := process.Signal(syscall.SIGKILL); err != nil {
+			return fmt.Errorf("failed to kill process %d: %w", pid, err)
+		}
+	}
+
+	return nil
 }

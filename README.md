@@ -33,7 +33,7 @@ It does the following:
 1. Creates `~/.config/dade/` and its subdirectories
 2. Checks for required dependencies (Caddy, jq) and offers to install them
 3. Generates a Caddyfile and starts Caddy as a launchd service
-4. Trusts the local CA certificate so browsers accept `*.local` HTTPS
+4. Trusts the local CA certificate so browsers accept local HTTPS
 5. Installs the six default templates
 
 Setup is safe to re-run. It skips work that is already complete.
@@ -324,7 +324,7 @@ Starts a development server with full orchestration.
 4. Starts the main dev server
 5. Ensures the HTTPS proxy is running and the project's domain is configured
 
-For web templates, the project is available at `https://<name>.<hostname>.local`. For non-web templates (ios, android, cli, tui), the command runs the project directly.
+For web templates, the project is available at `https://<name>.<hostname>.localhost` (or `.local` if configured). For non-web templates (ios, android, cli, tui), the command runs the project directly.
 
 | Flag | Description |
 |------|-------------|
@@ -457,13 +457,33 @@ These flags work with every command:
 
 dade runs [Caddy](https://caddyserver.com/) as a launchd service. Caddy generates local TLS certificates and routes HTTPS requests to project ports.
 
-Each project gets a domain based on your computer's hostname:
+### Domains
+
+By default, dade uses `.localhost` domains which resolve to `127.0.0.1` automatically (no `/etc/hosts` needed):
 
 ```
-https://<project-name>.<hostname>.local
+https://<project-name>.<hostname>.localhost
 ```
 
-For example, if your hostname is `macbook` and you create a project called `myapp`, it is available at `https://myapp.macbook.local`. These URLs work from any device on the same local network.
+For example, if your hostname is `macbook` and you create a project called `myapp`, it is available at `https://myapp.macbook.localhost`.
+
+#### `.localhost` vs `.local`
+
+- **`.localhost`** (default): Resolves to `127.0.0.1` per RFC 6761. Works immediately on this machine. No configuration required.
+- **`.local`**: Requires `/etc/hosts` entries for subdomains. Only works on this machine unless you manually configure DNS. Useful if you need LAN access to your development projects.
+
+To switch to `.local`:
+
+```bash
+echo 'domain_tld = ".local"' > ~/.config/dade/config.toml
+dade proxy reload
+```
+
+Then add each project's domain to `/etc/hosts`:
+
+```bash
+sudo bash -c "echo '127.0.0.1\t<project-name>.<hostname>.local' >> /etc/hosts"
+```
 
 The Caddyfile is stored at `~/.config/dade/Caddyfile` and is regenerated automatically whenever projects are added, removed, or have their ports changed. You should not edit the Caddyfile manually.
 
@@ -636,6 +656,7 @@ my-template = "https://github.com/you/your-template.git"
 | Path | Purpose |
 |------|---------|
 | `~/.config/dade/` | Base configuration directory |
+| `~/.config/dade/config.toml` | Optional configuration file (domain TLD, etc.) |
 | `~/.config/dade/templates/` | Installed template directories |
 | `~/.config/dade/projects.json` | Registry of all dade projects (name, port, path, template) |
 | `~/.config/dade/Caddyfile` | Generated Caddy proxy configuration |

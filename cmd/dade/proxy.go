@@ -172,6 +172,14 @@ func (c proxyCommand) status(ctx context.Context, logger *logging.Logger) int {
 		logger.Warn("Proxy not running")
 	}
 
+	domainTLD := config.DomainTLD()
+	logger.Info(fmt.Sprintf("Domain TLD: %s", domainTLD))
+	if domainTLD == ".local" {
+		logger.Info("Hosts file: /etc/hosts (required for LAN access)")
+	} else {
+		logger.Info("Hosts file: not required")
+	}
+
 	projectsPath, err := c.projectsFile()
 	if err != nil {
 		logger.Error("Failed to resolve projects registry")
