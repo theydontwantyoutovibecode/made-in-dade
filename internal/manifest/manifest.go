@@ -191,6 +191,10 @@ func ServeType(manifest Manifest) string {
 	return manifest.Serve.Type
 }
 
+func HasServeSection(manifest Manifest) bool {
+	return manifest.Serve.Type != ""
+}
+
 func ServeCommand(manifest Manifest, mode string) string {
 	if mode == "prod" {
 		if manifest.Serve.Prod != "" {

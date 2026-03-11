@@ -14,6 +14,7 @@ import (
 
 	"github.com/theydontwantyoutovibecode/made-in-dade/internal/config"
 	execx "github.com/theydontwantyoutovibecode/made-in-dade/internal/exec"
+	"github.com/theydontwantyoutovibecode/made-in-dade/internal/hotreload"
 	"github.com/theydontwantyoutovibecode/made-in-dade/internal/lifecycle"
 	"github.com/theydontwantyoutovibecode/made-in-dade/internal/logging"
 	"github.com/theydontwantyoutovibecode/made-in-dade/internal/manifest"
@@ -21,6 +22,7 @@ import (
 	"github.com/theydontwantyoutovibecode/made-in-dade/internal/readonly"
 	"github.com/theydontwantyoutovibecode/made-in-dade/internal/registry"
 	"github.com/theydontwantyoutovibecode/made-in-dade/internal/ui"
+	"github.com/theydontwantyoutovibecode/made-in-dade/internal/watcher"
 	"github.com/spf13/cobra"
 )
 
@@ -58,6 +60,7 @@ type devCommand struct {
 	templatesDir func() (string, error)
 	projectsFile func() (string, error)
 	readMarker   func(string) (registry.Marker, error)
+	updatePort   func(string, string, int) (registry.Project, error)
 	readFile     func(string) ([]byte, error)
 	isPortInUse  func(int) bool
 }
@@ -70,6 +73,7 @@ func defaultDevCommand() devCommand {
 		templatesDir: config.TemplatesDir,
 		projectsFile: config.ProjectsFile,
 		readMarker:   registry.ReadMarker,
+		updatePort:   registry.UpdatePort,
 		readFile:     os.ReadFile,
 		isPortInUse:  isPortInUse,
 	}
@@ -93,6 +97,76 @@ func runDevCmd(cmd *cobra.Command, args []string) error {
 		return errors.New("dev command failed")
 	}
 	return nil
+}
+
+func (c devCommand) hasTailwindCSS(projectDir string) bool {
+	configPath := filepath.Join(projectDir, "tailwind.config.js")
+	_, err := os.Stat(configPath)
+	return err == nil
+}
+
+func containsCommand(cmds []string, target string) bool {
+	for _, cmd := range cmds {
+		if cmd == target {
+			return true
+		}
+	}
+	return false
+}
+
+func (c devCommand) getSimpleTailwindWatcherCommand(projectDir string) string {
+	// Create simple Tailwind watcher script
+	scriptContent := `#!/bin/bash
+last_modified=$(stat -f %m css/input.css 2>/dev/null || echo 0)
+
+while true; do
+    current_modified=$(stat -f %m css/input.css 2>/dev/null || echo 0)
+    
+    if [[ "$current_modified" != "$last_modified" ]]; then
+        echo "CSS file changed, recompiling Tailwind..."
+        tailwindcss -i css/input.css -o css/output.css
+        last_modified="$current_modified"
+    fi
+    
+    sleep 1
+done
+`
+	
+	scriptPath := filepath.Join(projectDir, ".dade-tailwind-watcher.sh")
+	if err := os.WriteFile(scriptPath, []byte(scriptContent), 0755); err != nil {
+		return ""
+	}
+	
+	return "bash " + scriptPath
+}
+
+func (c devCommand) getFileWatcherCommand(projectDir string, port int) string {
+	// Watch HTML, CSS, and JS files for changes
+	filesToWatch := []string{
+		"index.html",
+		"css/*.css",
+		"js/*.js",
+		"partials/*.html",
+	}
+	
+	watchPatterns := strings.Join(filesToWatch, " ")
+	
+	// Create a script that watches files and triggers browser refresh via simple HTTP endpoint
+	scriptContent := fmt.Sprintf(`#!/bin/bash
+while true; do
+	if fswatch -1 -e ".*" -i "\\.swp$" %s 2>/dev/null; then
+		# File changed, trigger browser refresh
+		curl -s "http://localhost:%d/_dade/reload" >/dev/null 2>&1
+	fi
+done
+`, watchPatterns, port)
+	
+	scriptPath := filepath.Join(projectDir, ".dade-watcher.sh")
+	if err := os.WriteFile(scriptPath, []byte(scriptContent), 0755); err != nil {
+		return ""
+	}
+	
+	return "bash " + scriptPath
 }
 
 func (c devCommand) run(ctx context.Context, args []string, console *ui.UI, logger *logging.Logger, skipSetup bool, openBrowser bool, portOverride int, nonInteractive bool) int {
@@ -158,6 +232,16 @@ func (c devCommand) run(ctx context.Context, args []string, console *ui.UI, logg
 	if data, err := c.readFile(manifestPath); err == nil {
 		if parsed, err := manifest.Parse(data); err == nil {
 			mf = parsed
+		}
+	}
+
+	// Check for local project manifest (overrides template manifest if it has serve section)
+	localManifest := filepath.Join(projectDir, "dade.toml")
+	if data, err := c.readFile(localManifest); err == nil {
+		if parsed, err := manifest.Parse(data); err == nil {
+			if manifest.HasServeSection(parsed) {
+				mf = parsed
+			}
 		}
 	}
 
@@ -260,6 +344,15 @@ func (c devCommand) run(ctx context.Context, args []string, console *ui.UI, logg
 		setupScript := manifest.DevSetupScript(mf)
 		setupCmds := manifest.DevSetupCommands(mf)
 
+		// Filter out Tailwind setup commands (we use Go-based watcher instead)
+		var filteredSetupCmds []string
+		for _, cmd := range setupCmds {
+			if !strings.Contains(cmd, "tailwindcss") {
+				filteredSetupCmds = append(filteredSetupCmds, cmd)
+			}
+		}
+		setupCmds = filteredSetupCmds
+
 		if setupScript != "" {
 			logger.Info("Running setup script...")
 			if err := ctrl.RunSetupScript(ctx, setupScript); err != nil {
@@ -276,9 +369,116 @@ func (c devCommand) run(ctx context.Context, args []string, console *ui.UI, logg
 		logger.Success("Setup complete")
 	}
 
-	// Start background processes
+	// Start background processes and hot-reload
+	hotReloadServer := &hotreload.HTTPServer{}
+	hotReloadEnabled := false
+
 	if manifest.HasDevSection(mf) {
 		bgCmds := manifest.DevBackgroundCommands(mf)
+
+		// Filter out Tailwind background commands (we use Go-based watcher instead)
+		var filteredBgCmds []string
+		for _, cmd := range bgCmds {
+			if !strings.Contains(cmd, "tailwindcss") {
+				filteredBgCmds = append(filteredBgCmds, cmd)
+			}
+		}
+		bgCmds = filteredBgCmds
+
+		// Initialize hot-reload for static sites
+		if serveType == "static" {
+			// Create hot-reload server on a different port
+			hotReloadPort := port + 1
+			staticRoot := projectDir
+			if mf.Serve.Static.Root != "" {
+				staticRoot = filepath.Join(projectDir, mf.Serve.Static.Root)
+			}
+
+			// Create file handler for static files
+			fileHandler := hotreload.NewFileServer(staticRoot)
+
+			// Create hot-reload server with script injection
+			hotReloadServer = hotreload.NewHTTPServer(hotReloadPort, fileHandler)
+
+			// Start hot-reload server
+			if err := hotReloadServer.Start(); err != nil {
+				logger.Warn(fmt.Sprintf("Failed to start hot-reload server: %v", err))
+			} else {
+				logger.Info(fmt.Sprintf("Hot-reload server started on port %d", hotReloadPort))
+				hotReloadEnabled = true
+
+				// Register cleanup
+				ctrl.RegisterCleanup(func() {
+					hotReloadServer.Stop()
+				})
+
+				// Tailwind watcher (if configured)
+				var tw *hotreload.TailwindWatcher
+
+				// Start file watcher if configured
+				if c.hasTailwindCSS(projectDir) {
+					// Start Tailwind watcher with reload coordination
+					tw = hotreload.NewTailwindWatcher(projectDir, "css/input.css", "css/output.css")
+					tw.SetReloadFunc(func() {
+						hotReloadServer.TriggerReload()
+					})
+					if err := tw.Start(ctx); err != nil {
+						logger.Warn(fmt.Sprintf("Failed to start Tailwind watcher: %v", err))
+					} else {
+						logger.Info("Tailwind watcher started")
+						ctrl.RegisterCleanup(func() {
+							tw.Stop()
+						})
+					}
+				}
+
+				// Start general file watcher for HTML/JS/CSS changes
+				w, err := watcher.New(watcher.DefaultPatterns())
+				if err != nil {
+					logger.Warn(fmt.Sprintf("Failed to create file watcher: %v", err))
+				} else {
+					if err := w.AddDirectory(projectDir); err != nil {
+						logger.Warn(fmt.Sprintf("Failed to add directory to watcher: %v", err))
+					} else {
+						w.OnChange(func(path string) {
+							logger.Info(fmt.Sprintf("File changed: %s", path))
+
+							// If HTML/JS file changed, recompile Tailwind first
+							if strings.HasSuffix(path, ".html") || strings.HasSuffix(path, ".js") {
+								if tw != nil {
+									// Manually trigger Tailwind compilation
+									tw.CompileAndReload(filepath.Join(projectDir, tw.InputCSS), filepath.Join(projectDir, tw.OutputCSS))
+								}
+							} else {
+								// For other files, just reload
+								hotReloadServer.TriggerReload()
+							}
+						})
+						if err := w.Start(ctx); err != nil {
+							logger.Warn(fmt.Sprintf("Failed to start file watcher: %v", err))
+						} else {
+							logger.Info("File watcher started")
+							ctrl.RegisterCleanup(func() {
+								w.Stop()
+							})
+						}
+					}
+				}
+
+				// Update port to hot-reload server port for proxy/URL display
+				port = hotReloadPort
+
+				// Update project in registry with new port so proxy can find it
+				projectsPath, err := c.projectsFile()
+				if err == nil {
+					if _, err := c.updatePort(projectsPath, projectName, port); err != nil {
+						logger.Warn(fmt.Sprintf("Failed to update project port in registry: %v", err))
+					}
+				}
+			}
+		}
+
+		// Start other background processes from manifest
 		if len(bgCmds) > 0 {
 			logger.Info(fmt.Sprintf("Starting %d background process(es)...", len(bgCmds)))
 			if err := ctrl.StartBackground(ctx, bgCmds); err != nil {
@@ -353,37 +553,51 @@ func (c devCommand) run(ctx context.Context, args []string, console *ui.UI, logg
 		// Run server in background
 		switch serveType {
 		case "static":
-			staticRoot := projectDir
-			if mf.Serve.Static.Root != "" {
-				staticRoot = filepath.Join(projectDir, mf.Serve.Static.Root)
-			}
-			// Create a temporary Caddyfile for static serving with clean URLs
-			caddyfilePath := filepath.Join(projectDir, ".dade.caddyfile")
-			caddyfileContent := fmt.Sprintf(`:%[1]d {
+			// Skip Caddy server if hot-reload is enabled (hot-reload server serves static files)
+			if !hotReloadEnabled {
+				staticRoot := projectDir
+				if mf.Serve.Static.Root != "" {
+					staticRoot = filepath.Join(projectDir, mf.Serve.Static.Root)
+				}
+				// Create a temporary Caddyfile for static serving with clean URLs
+				caddyfilePath := filepath.Join(projectDir, ".dade.caddyfile")
+				caddyfileContent := fmt.Sprintf(`:%[1]d {
 	root %[2]s
 	try_files {path}.html {path}
 	file_server
+
+	# Hot reload configuration for development
+	header /*.css Cache-Control "no-cache"
+	header /*.html Cache-Control "no-cache"
 }
 `, port, staticRoot)
-			if err := os.WriteFile(caddyfilePath, []byte(caddyfileContent), 0644); err != nil {
-				logger.Error(fmt.Sprintf("Failed to create Caddyfile: %v", err))
-				return 1
-			}
-			// Register cleanup to remove the temporary Caddyfile
-			cleanupCaddyfile := func() {
-				_ = os.Remove(caddyfilePath)
-			}
-			ctrl.RegisterCleanup(cleanupCaddyfile)
-			// Build caddy command using the Caddyfile (suppress logs for cleaner output)
-			serveCmd := fmt.Sprintf("caddy run --config %s 2>/dev/null", caddyfilePath)
-			if _, err := ctrl.StartServerBackground(ctx, serveCmd, port, portEnv); err != nil {
-				logger.Error(fmt.Sprintf("Failed to start server: %v", err))
-				return 1
-			}
-			logger.Success(fmt.Sprintf("Started %s in background mode", projectName))
-			if needsProxy {
-				projectURL := fmt.Sprintf("https://%s", config.ProjectDomain(projectName))
-				logger.Info(fmt.Sprintf("URL: %s", projectURL))
+				if err := os.WriteFile(caddyfilePath, []byte(caddyfileContent), 0644); err != nil {
+					logger.Error(fmt.Sprintf("Failed to create Caddyfile: %v", err))
+					return 1
+				}
+				// Register cleanup to remove the temporary Caddyfile
+				cleanupCaddyfile := func() {
+					_ = os.Remove(caddyfilePath)
+				}
+				ctrl.RegisterCleanup(cleanupCaddyfile)
+				// Build caddy command using the Caddyfile (suppress logs for cleaner output)
+				serveCmd := fmt.Sprintf("caddy run --config %s 2>/dev/null", caddyfilePath)
+				if _, err := ctrl.StartServerBackground(ctx, serveCmd, port, portEnv); err != nil {
+					logger.Error(fmt.Sprintf("Failed to start server: %v", err))
+					return 1
+				}
+				logger.Success(fmt.Sprintf("Started %s in background mode", projectName))
+				if needsProxy {
+					projectURL := fmt.Sprintf("https://%s", config.ProjectDomain(projectName))
+					logger.Info(fmt.Sprintf("URL: %s", projectURL))
+				}
+			} else {
+				// Hot-reload is already running, just log success
+				logger.Success(fmt.Sprintf("Started %s in background mode with hot-reload", projectName))
+				if needsProxy {
+					projectURL := fmt.Sprintf("https://%s", config.ProjectDomain(projectName))
+					logger.Info(fmt.Sprintf("URL: %s", projectURL))
+				}
 			}
 		case "command":
 			if _, err := ctrl.StartServerBackground(ctx, serveCmd, port, portEnv); err != nil {
@@ -397,36 +611,49 @@ func (c devCommand) run(ctx context.Context, args []string, console *ui.UI, logg
 		// Run server in foreground (blocking)
 		switch serveType {
 		case "static":
-			staticRoot := projectDir
-			if mf.Serve.Static.Root != "" {
-				staticRoot = filepath.Join(projectDir, mf.Serve.Static.Root)
-			}
-			// Create a temporary Caddyfile for static serving with clean URLs
-			caddyfilePath := filepath.Join(projectDir, ".dade.caddyfile")
-			caddyfileContent := fmt.Sprintf(`:%[1]d {
+			// Skip Caddy server if hot-reload is enabled (hot-reload server serves static files)
+			if !hotReloadEnabled {
+				staticRoot := projectDir
+				if mf.Serve.Static.Root != "" {
+					staticRoot = filepath.Join(projectDir, mf.Serve.Static.Root)
+				}
+				// Create a temporary Caddyfile for static serving with clean URLs
+				caddyfilePath := filepath.Join(projectDir, ".dade.caddyfile")
+				caddyfileContent := fmt.Sprintf(`:%[1]d {
 	root %[2]s
 	try_files {path}.html {path}
 	file_server
+
+	# Hot reload configuration for development
+	header /*.css Cache-Control "no-cache"
+	header /*.html Cache-Control "no-cache"
 }
 `, port, staticRoot)
-			if err := os.WriteFile(caddyfilePath, []byte(caddyfileContent), 0644); err != nil {
-				logger.Error(fmt.Sprintf("Failed to create Caddyfile: %v", err))
-				return 1
-			}
-			// Register cleanup to remove the temporary Caddyfile
-			cleanupCaddyfile := func() {
-				_ = os.Remove(caddyfilePath)
-			}
-			ctrl.RegisterCleanup(cleanupCaddyfile)
-			// Build caddy command using the Caddyfile (suppress logs for cleaner output)
-			serveCmd := fmt.Sprintf("caddy run --config %s 2>/dev/null", caddyfilePath)
-			if err := ctrl.StartServer(ctx, serveCmd, port, portEnv); err != nil {
-				// Check if it was a signal-based shutdown
-				if ctx.Err() != nil {
-					return 0
+				if err := os.WriteFile(caddyfilePath, []byte(caddyfileContent), 0644); err != nil {
+					logger.Error(fmt.Sprintf("Failed to create Caddyfile: %v", err))
+					return 1
 				}
-				logger.Error(fmt.Sprintf("Server exited: %v", err))
-				return 1
+				// Register cleanup to remove the temporary Caddyfile
+				cleanupCaddyfile := func() {
+					_ = os.Remove(caddyfilePath)
+				}
+				ctrl.RegisterCleanup(cleanupCaddyfile)
+				// Build caddy command using the Caddyfile (suppress logs for cleaner output)
+				serveCmd := fmt.Sprintf("caddy run --config %s 2>/dev/null", caddyfilePath)
+				if err := ctrl.StartServer(ctx, serveCmd, port, portEnv); err != nil {
+					// Check if it was a signal-based shutdown
+					if ctx.Err() != nil {
+						return 0
+					}
+					logger.Error(fmt.Sprintf("Server exited: %v", err))
+					return 1
+				}
+			} else {
+				// Hot-reload is already running in background, just keep it alive
+				logger.Success(fmt.Sprintf("Started %s with hot-reload", projectName))
+				// Block on context
+				<-ctx.Done()
+				return 0
 			}
 		case "command":
 			if err := ctrl.StartServer(ctx, serveCmd, port, portEnv); err != nil {
